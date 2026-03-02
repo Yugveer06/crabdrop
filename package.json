@@ -5,9 +5,11 @@
 	"scripts": {
 		"dev": "concurrently --kill-others -n client,server -c cyan,magenta \"pnpm dev:client\" \"pnpm dev:server\"",
 		"dev:client": "pnpm --filter client dev",
-		"dev:server": "cd apps/server && cargo watch -x run",
+		"dev:server": "docker compose up --build",
+		"dev:server:logs": "docker compose logs -f server",
+		"dev:stop": "docker compose down",
 		"build:client": "pnpm --filter client build",
-		"build:server": "cd apps/server && cargo build --release",
+		"build:server": "docker compose build server",
 		"db:migrate": "cd apps/server && sea-orm-cli migrate up",
 		"db:migrate:down": "cd apps/server && sea-orm-cli migrate down",
 		"db:generate": "cd apps/server && sea-orm-cli generate entity -o src/entities"

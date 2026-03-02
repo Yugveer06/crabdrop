@@ -6,6 +6,7 @@ use serde::Deserialize;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_stream::StreamExt;
+use tracing::{debug, info};
 
 use crate::compression::ProgressEvent;
 use crate::error::AppError;
@@ -27,6 +28,7 @@ pub async fn progress(
 {
     let (tx, rx) = mpsc::channel::<ProgressEvent>(32);
 
+    info!(job_id = %params.job_id, "SSE progress channel registered");
     state.jobs.insert(params.job_id.clone(), tx);
 
     let stream = ReceiverStream::new(rx).map(|event| {

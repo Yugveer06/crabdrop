@@ -2,6 +2,7 @@ use aws_credential_types::Credentials;
 use aws_sdk_s3::config::Region;
 use aws_sdk_s3::primitives::ByteStream;
 use aws_sdk_s3::Client;
+use tracing::{debug, error, info};
 
 pub struct Storage {
     client: Client,
@@ -45,6 +46,9 @@ impl Storage {
         body: Vec<u8>,
         content_type: &str,
     ) -> Result<String, String> {
+        let size = body.len();
+        debug!(key = %key, size, content_type = %content_type, "Uploading to R2");
+
         self.client
             .put_object()
             .bucket(&self.bucket)
@@ -53,9 +57,14 @@ impl Storage {
             .content_type(content_type)
             .send()
             .await
-            .map_err(|e| format!("R2 upload failed: {}", e))?;
+            .map_err(|e| {
+                error!(key = %key, "R2 upload failed: {}", e);
+                format!("R2 upload failed: {}", e)
+            })?;
 
-        Ok(format!("{}/{}", self.public_url, key))
+        let url = format!("{}/{}", self.public_url, key);
+        info!(key = %key, size, "R2 upload successful");
+        Ok(url)
     }
 
     pub async fn delete(&self, key: &str) -> Result<(), String> {

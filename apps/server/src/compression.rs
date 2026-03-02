@@ -6,6 +6,7 @@ use serde::Deserialize;
 use std::io::Read;
 use tempfile::NamedTempFile;
 use tokio::sync::mpsc;
+use tracing::{debug, info, warn};
 
 /// Progress events emitted during compression and upload stages.
 #[derive(Debug, Clone)]
@@ -125,10 +126,29 @@ pub fn compress(
     };
 
     let result = match kind {
-        MediaKind::Image => compress_image(&bytes, content_type, params, &send_progress),
-        MediaKind::Video => compress_video(&bytes, content_type, params, &send_progress),
-        MediaKind::Audio => compress_audio(&bytes, content_type, params, &send_progress),
+        MediaKind::Image => {
+            info!(content_type, "Compressing image");
+            compress_image(&bytes, content_type, params, &send_progress)
+        }
+        MediaKind::Video => {
+            info!(content_type, "Compressing video");
+            compress_video(&bytes, content_type, params, &send_progress)
+        }
+        MediaKind::Audio => {
+            info!(content_type, "Compressing audio");
+            compress_audio(&bytes, content_type, params, &send_progress)
+        }
     };
+
+    match &result {
+        Ok((out, ct)) => info!(
+            input_size = bytes.len(),
+            output_size = out.len(),
+            output_content_type = %ct,
+            "Compression finished"
+        ),
+        Err(e) => warn!("Compression error: {}", e),
+    }
 
     send_progress("done", 100);
     result
