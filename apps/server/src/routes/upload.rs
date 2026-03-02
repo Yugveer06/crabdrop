@@ -1,4 +1,4 @@
-use axum::extract::{Multipart, State};
+use axum::extract::{Multipart, Query, State};
 use axum::Json;
 use chrono::Utc;
 use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
@@ -6,6 +6,7 @@ use serde::Serialize;
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
+use crate::compression::{self, CompressionParams};
 use crate::entities::images;
 use crate::error::AppError;
 use crate::state::SharedState;
@@ -50,6 +51,7 @@ fn extension_from_content_type(ct: &str) -> &str {
         "audio/wav" => "wav",
         "audio/webm" => "weba",
         "audio/flac" => "flac",
+        "audio/aac" => "aac",
         _ => "bin",
     }
 }
@@ -61,11 +63,26 @@ pub struct UploadResponse {
     pub url: String,
     pub original_filename: String,
     pub content_type: String,
+    /// Original file size in bytes (before compression).
     pub size_bytes: i64,
+    /// File size after compression. Equal to `size_bytes` when compression is disabled.
+    pub compressed_size_bytes: i64,
+}
+
+/// Query parameters accepted by `POST /api/upload`.
+#[derive(serde::Deserialize, Default)]
+pub struct UploadQuery {
+    /// Optional SSE job ID. If provided, real-time progress events are
+    /// pushed to the matching `GET /api/progress?job_id=...` connection.
+    pub job_id: Option<String>,
+
+    #[serde(flatten)]
+    pub compression: CompressionParams,
 }
 
 pub async fn upload(
     State(state): State<SharedState>,
+    Query(query): Query<UploadQuery>,
     mut multipart: Multipart,
 ) -> Result<Json<UploadResponse>, AppError> {
     let field = multipart
@@ -74,10 +91,7 @@ pub async fn upload(
         .map_err(|e| AppError::BadRequest(format!("Invalid multipart data: {}", e)))?
         .ok_or_else(|| AppError::BadRequest("No file provided".to_string()))?;
 
-    let original_filename = field
-        .file_name()
-        .unwrap_or("unknown")
-        .to_string();
+    let original_filename = field.file_name().unwrap_or("unknown").to_string();
 
     let content_type = field
         .content_type()
@@ -107,10 +121,38 @@ pub async fn upload(
         )));
     }
 
-    // Hash the file for deduplication
-    let hash = format!("{:x}", Sha256::digest(&bytes));
+    let original_size = bytes.len() as i64;
 
-    // Check if this exact file was already uploaded
+    // ------------------------------------------------------------------
+    // Retrieve the SSE progress sender for this job (if any)
+    // ------------------------------------------------------------------
+    let progress_tx = query
+        .job_id
+        .as_ref()
+        .and_then(|id| state.jobs.get(id).map(|e| e.value().clone()));
+
+    // ------------------------------------------------------------------
+    // Compress on a blocking thread (ffmpeg is synchronous)
+    // ------------------------------------------------------------------
+    let params = query.compression.clone();
+    let content_type_for_compress = content_type.clone();
+    let raw_bytes = bytes.to_vec();
+
+    let (compressed_bytes, effective_content_type) =
+        tokio::task::spawn_blocking(move || {
+            compression::compress(raw_bytes, &content_type_for_compress, &params, progress_tx)
+        })
+        .await
+        .map_err(|e| AppError::Internal(format!("Compression task panicked: {}", e)))?
+        .map_err(|e| AppError::Internal(format!("Compression failed: {}", e)))?;
+
+    let compressed_size = compressed_bytes.len() as i64;
+
+    // ------------------------------------------------------------------
+    // Hash the *compressed* bytes for deduplication
+    // ------------------------------------------------------------------
+    let hash = format!("{:x}", Sha256::digest(&compressed_bytes));
+
     let existing = images::Entity::find()
         .filter(images::Column::Hash.eq(&hash))
         .one(&state.db)
@@ -118,29 +160,62 @@ pub async fn upload(
         .map_err(|e| AppError::Internal(format!("Database error: {}", e)))?;
 
     if let Some(existing) = existing {
+        // Clean up SSE job entry
+        if let Some(id) = &query.job_id {
+            state.jobs.remove(id);
+        }
         return Ok(Json(UploadResponse {
             id: existing.id,
             slug: existing.slug.clone(),
             url: format!("{}/{}", state.r2_public_url, existing.r2_key),
             original_filename: existing.original_filename,
             content_type: existing.content_type,
-            size_bytes: existing.size_bytes,
+            size_bytes: original_size,
+            compressed_size_bytes: existing.size_bytes,
         }));
     }
 
-    // Generate a unique slug and R2 key
+    // ------------------------------------------------------------------
+    // Emit "uploading" stage via SSE
+    // ------------------------------------------------------------------
+    if let Some(id) = &query.job_id {
+        if let Some(tx) = state.jobs.get(id).map(|e| e.value().clone()) {
+            let _ = tx.send(crate::compression::ProgressEvent {
+                stage: "uploading".to_string(),
+                percent: 0,
+            }).await;
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Upload compressed bytes to R2
+    // ------------------------------------------------------------------
     let slug = nanoid::nanoid!(8);
-    let extension = extension_from_content_type(&content_type);
+    let extension = extension_from_content_type(&effective_content_type);
     let r2_key = format!("{}.{}", slug, extension);
 
-    // Upload to R2
     let url = state
         .storage
-        .upload(&r2_key, bytes.to_vec(), &content_type)
+        .upload(&r2_key, compressed_bytes, &effective_content_type)
         .await
         .map_err(|e| AppError::Internal(e))?;
 
+    // ------------------------------------------------------------------
+    // Emit "done" and clean up job entry
+    // ------------------------------------------------------------------
+    if let Some(id) = &query.job_id {
+        if let Some(tx) = state.jobs.get(id).map(|e| e.value().clone()) {
+            let _ = tx.send(crate::compression::ProgressEvent {
+                stage: "done".to_string(),
+                percent: 100,
+            }).await;
+        }
+        state.jobs.remove(id);
+    }
+
+    // ------------------------------------------------------------------
     // Save to database
+    // ------------------------------------------------------------------
     let now = Utc::now().fixed_offset();
     let id = Uuid::new_v4();
 
@@ -148,8 +223,8 @@ pub async fn upload(
         id: Set(id),
         slug: Set(slug.clone()),
         original_filename: Set(original_filename.clone()),
-        content_type: Set(content_type.clone()),
-        size_bytes: Set(bytes.len() as i64),
+        content_type: Set(effective_content_type.clone()),
+        size_bytes: Set(compressed_size),
         r2_key: Set(r2_key),
         hash: Set(hash),
         expires_at: Set(None),
@@ -167,7 +242,8 @@ pub async fn upload(
         slug,
         url,
         original_filename,
-        content_type,
-        size_bytes: bytes.len() as i64,
+        content_type: effective_content_type,
+        size_bytes: original_size,
+        compressed_size_bytes: compressed_size,
     }))
 }

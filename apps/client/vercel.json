@@ -1,0 +1,10 @@
+{
+	"buildCommand": "pnpm build",
+	"outputDirectory": "dist",
+	"installCommand": "pnpm install",
+	"framework": "vite",
+	"rewrites": [
+		{ "source": "/api/:path*", "destination": "${BACKEND_URL}/api/:path*" },
+		{ "source": "/f/:path*", "destination": "${BACKEND_URL}/f/:path*" }
+	]
+}

@@ -1,10 +1,12 @@
 use axum::extract::DefaultBodyLimit;
 use axum::routing::{get, post};
 use axum::Router;
+use dashmap::DashMap;
 use sea_orm::Database;
 use std::sync::Arc;
 use tower_http::cors::CorsLayer;
 
+mod compression;
 mod config;
 mod entities;
 mod error;
@@ -41,11 +43,13 @@ async fn main() {
         storage,
         max_upload_bytes: config.max_upload_bytes,
         r2_public_url: config.r2_public_url,
+        jobs: DashMap::new(),
     });
 
     let app = Router::new()
         .route("/api/health", get(routes::health::health))
         .route("/api/upload", post(routes::upload::upload))
+        .route("/api/progress", get(routes::progress::progress))
         .route("/f/{slug_with_ext}", get(routes::files::get_file))
         .layer(DefaultBodyLimit::max(config.max_upload_bytes))
         .layer(CorsLayer::permissive())

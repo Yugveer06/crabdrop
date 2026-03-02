@@ -1,0 +1,27 @@
+services:
+    server:
+        build:
+            context: ./apps/server
+            dockerfile: Dockerfile
+        env_file:
+            - .env
+        ports:
+            - "3001:3001"
+        restart: unless-stopped
+        networks:
+            - crabnet
+        healthcheck:
+            test: ["CMD", "curl", "-f", "http://localhost:3001/api/health"]
+            interval: 30s
+            timeout: 10s
+            retries: 5
+            start_period: 30s
+
+networks:
+    crabnet:
+        enable_ipv6: true
+        driver: bridge
+        ipam:
+            config:
+                - subnet: "172.28.0.0/16"
+                - subnet: "fd00:dead:beef::/48"
