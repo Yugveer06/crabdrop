@@ -1,0 +1,19 @@
+[package]
+name = "crabdrop"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+axum = { version = "0.8", features = ["multipart"] }
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tower-http = { version = "0.6", features = ["cors"] }
+sea-orm = { version = "1", features = ["runtime-tokio-rustls", "sqlx-postgres", "with-chrono", "with-uuid"] }
+dotenvy = "0.15"
+aws-sdk-s3 = "1"
+aws-credential-types = { version = "1", features = ["hardcoded-credentials"] }
+sha2 = "0.10"
+nanoid = "0.4"
+uuid = { version = "1", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
