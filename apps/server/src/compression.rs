@@ -171,11 +171,19 @@ fn image_encoder_config(content_type: &str, params: &CompressionParams) -> (&'st
             opts.set("quality", &(q as u32).to_string());
             ("libwebp", "image/webp".to_string(), opts)
         }
-        // PNG and everything else falls through to PNG encoder
+        // PNG is lossless — re-encoding PNG→PNG through ffmpeg cannot reduce
+        // size and often *increases* it (RGBA expansion, different zlib params).
+        // Instead, convert to lossy WebP which can dramatically shrink the file.
+        "image/png" => {
+            let q = params.webp_quality.unwrap_or(80.0).clamp(1.0, 100.0);
+            opts.set("quality", &(q as u32).to_string());
+            ("libwebp", "image/webp".to_string(), opts)
+        }
+        // Everything else also falls through to WebP for best compression
         _ => {
-            let level = params.png_level.unwrap_or(6).clamp(0, 9);
-            opts.set("compression_level", &level.to_string());
-            ("png", "image/png".to_string(), opts)
+            let q = params.webp_quality.unwrap_or(80.0).clamp(1.0, 100.0);
+            opts.set("quality", &(q as u32).to_string());
+            ("libwebp", "image/webp".to_string(), opts)
         }
     }
 }
@@ -191,13 +199,8 @@ fn compress_image(
     // Determine input suffix for ffmpeg format detection
     let input_suffix = format!(".{}", extension_for_mime(content_type));
     let (encoder_name, out_content_type, enc_opts) = image_encoder_config(content_type, params);
-    let out_suffix = format!(".{}", extension_for_mime(&out_content_type));
 
     let input_tmp = bytes_to_tempfile(bytes, &input_suffix)?;
-    let mut output_tmp = tempfile::Builder::new()
-        .suffix(&out_suffix)
-        .tempfile()
-        .map_err(|e| format!("output tempfile: {e}"))?;
 
     send_progress("compressing", 10);
 
@@ -221,29 +224,83 @@ fn compress_image(
 
     send_progress("compressing", 30);
 
-    // Decode first frame
+    // Decode first frame — send all packets, then EOF, then drain
     let mut decoded = frame::Video::empty();
+    let mut got_frame = false;
+
     for (stream, packet) in ictx.packets() {
         if stream.index() == stream_idx {
             decoder
                 .send_packet(&packet)
                 .map_err(|e| format!("send packet: {e}"))?;
             if decoder.receive_frame(&mut decoded).is_ok() {
+                got_frame = true;
                 break;
             }
         }
     }
-    decoder.send_eof().ok();
-    decoder.receive_frame(&mut decoded).ok();
+
+    if !got_frame {
+        decoder.send_eof().ok();
+        if decoder.receive_frame(&mut decoded).is_ok() {
+            got_frame = true;
+        }
+    }
+
+    // If decoding failed, skip compression and return the original bytes
+    if !got_frame || decoded.width() == 0 || decoded.height() == 0 {
+        warn!("Failed to decode image frame, skipping compression");
+        return Ok((bytes.to_vec(), content_type.to_string()));
+    }
+
+    debug!(
+        width = decoded.width(),
+        height = decoded.height(),
+        format = ?decoded.format(),
+        "Decoded image frame"
+    );
 
     send_progress("compressing", 60);
 
-    // Encode to output
+    // Pick a pixel format the encoder supports
+    let target_format = match encoder_name {
+        "mjpeg" => format::Pixel::YUVJ420P,
+        "libwebp" => format::Pixel::YUV420P,
+        "png" => format::Pixel::RGBA,
+        _ => format::Pixel::RGB24,
+    };
+
+    // Convert frame to the target pixel format using the software scaler
+    let converted = if decoded.format() != target_format {
+        debug!(
+            from = ?decoded.format(),
+            to = ?target_format,
+            "Converting pixel format"
+        );
+        let mut scaler = ffmpeg::software::scaling::Context::get(
+            decoded.format(),
+            decoded.width(),
+            decoded.height(),
+            target_format,
+            decoded.width(),
+            decoded.height(),
+            ffmpeg::software::scaling::Flags::BILINEAR,
+        )
+        .map_err(|e| format!("scaler init: {e}"))?;
+
+        let mut converted_frame = frame::Video::empty();
+        scaler
+            .run(&decoded, &mut converted_frame)
+            .map_err(|e| format!("scale: {e}"))?;
+        converted_frame.set_pts(decoded.pts());
+        converted_frame
+    } else {
+        decoded
+    };
+
+    // Encode the frame
     let enc = encoder::find_by_name(encoder_name)
         .ok_or_else(|| format!("encoder '{}' not found", encoder_name))?;
-
-    let mut octx = format::output(&output_tmp.path())
-        .map_err(|e| format!("output context: {e}"))?;
 
     let mut enc_ctx = codec::Context::new_with_codec(enc);
     let mut video_enc = enc_ctx
@@ -251,40 +308,49 @@ fn compress_image(
         .video()
         .map_err(|e| format!("enc video: {e}"))?;
 
-    video_enc.set_width(decoded.width());
-    video_enc.set_height(decoded.height());
-    video_enc.set_format(decoded.format());
+    video_enc.set_width(converted.width());
+    video_enc.set_height(converted.height());
+    video_enc.set_format(target_format);
     video_enc.set_time_base(Rational::new(1, 1));
-
-    let mut out_stream = octx.add_stream(enc).map_err(|e| format!("add stream: {e}"))?;
-    out_stream.set_time_base(Rational::new(1, 1));
 
     let mut encoder = video_enc
         .open_with(enc_opts)
         .map_err(|e| format!("open encoder: {e}"))?;
 
-    format::context::output::dump(&octx, 0, None);
-    octx.write_header().map_err(|e| format!("write header: {e}"))?;
-
     encoder
-        .send_frame(&decoded)
+        .send_frame(&converted)
         .map_err(|e| format!("send frame: {e}"))?;
     encoder.send_eof().map_err(|e| format!("eof: {e}"))?;
 
+    // For WebP: the encoded packet data IS a complete WebP file, so we grab
+    // it directly instead of going through ffmpeg's problematic WebP muxer.
+    // For other formats (JPEG, etc.) we also just use raw packet data — for
+    // single-image codecs the packet is a self-contained file.
+    let mut out_bytes: Vec<u8> = Vec::new();
     let mut encoded = Packet::empty();
     while encoder.receive_packet(&mut encoded).is_ok() {
-        encoded.set_stream(0);
-        encoded
-            .write_interleaved(&mut octx)
-            .map_err(|e| format!("write packet: {e}"))?;
+        if let Some(data) = encoded.data() {
+            out_bytes.extend_from_slice(data);
+        }
     }
 
-    octx.write_trailer().map_err(|e| format!("write trailer: {e}"))?;
-    drop(octx);
+    if out_bytes.is_empty() {
+        warn!("Encoder produced no output packets, returning original");
+        return Ok((bytes.to_vec(), content_type.to_string()));
+    }
 
     send_progress("compressing", 90);
 
-    let out_bytes = tempfile_to_bytes(&mut output_tmp)?;
+    // Safety net: if "compressed" output is larger than the original, skip it.
+    if out_bytes.len() >= bytes.len() {
+        warn!(
+            original_size = bytes.len(),
+            compressed_size = out_bytes.len(),
+            "Compressed image is larger than original, returning original"
+        );
+        return Ok((bytes.to_vec(), content_type.to_string()));
+    }
+
     send_progress("compressing", 100);
 
     Ok((out_bytes, out_content_type))

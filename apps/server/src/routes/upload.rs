@@ -73,12 +73,18 @@ pub struct UploadResponse {
 /// Query parameters accepted by `POST /api/upload`.
 #[derive(serde::Deserialize, Default)]
 pub struct UploadQuery {
-    /// Optional SSE job ID. If provided, real-time progress events are
-    /// pushed to the matching `GET /api/progress?job_id=...` connection.
+    /// Optional SSE job ID.
     pub job_id: Option<String>,
 
-    #[serde(flatten)]
-    pub compression: CompressionParams,
+    pub compress: Option<bool>,
+    pub jpeg_quality: Option<u8>,
+    pub png_level: Option<u8>,
+    pub webp_quality: Option<f32>,
+    pub video_crf: Option<u8>,
+    pub video_codec: Option<String>,
+    pub video_preset: Option<String>,
+    pub audio_bitrate: Option<u32>,
+    pub audio_codec: Option<String>,
 }
 
 pub async fn upload(
@@ -86,7 +92,19 @@ pub async fn upload(
     Query(query): Query<UploadQuery>,
     mut multipart: Multipart,
 ) -> Result<Json<UploadResponse>, AppError> {
-    info!(job_id = ?query.job_id, compress = ?query.compression.compress, "Upload request received");
+    let compression = CompressionParams {
+        compress: query.compress,
+        jpeg_quality: query.jpeg_quality,
+        png_level: query.png_level,
+        webp_quality: query.webp_quality,
+        video_crf: query.video_crf,
+        video_codec: query.video_codec.clone(),
+        video_preset: query.video_preset.clone(),
+        audio_bitrate: query.audio_bitrate,
+        audio_codec: query.audio_codec.clone(),
+    };
+
+    info!(job_id = ?query.job_id, compress = ?compression.compress, "Upload request received");
 
     let field = multipart
         .next_field()
@@ -169,7 +187,7 @@ pub async fn upload(
     // ------------------------------------------------------------------
     // Compress on a blocking thread (ffmpeg is synchronous)
     // ------------------------------------------------------------------
-    let params = query.compression.clone();
+    let params = compression;
     let content_type_for_compress = content_type.clone();
     let raw_bytes = bytes.to_vec();
 
