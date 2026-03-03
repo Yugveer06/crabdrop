@@ -1,4 +1,4 @@
-import type { CompressionSettings } from "../types";
+import type { CompressionSettings, FileMediaType } from "../types";
 import {
 	VIDEO_PRESETS,
 	VIDEO_CODECS,
@@ -6,100 +6,134 @@ import {
 	AUDIO_BITRATES,
 } from "../lib/constants";
 
-interface SettingsPanelProps {
+interface FileSettingsProps {
+	fileName: string;
+	mediaType: FileMediaType;
 	settings: CompressionSettings;
-	setSettings: React.Dispatch<React.SetStateAction<CompressionSettings>>;
-	settingsOpen: boolean;
-	setSettingsOpen: React.Dispatch<React.SetStateAction<boolean>>;
+	onChange: (settings: CompressionSettings) => void;
 }
 
-export function SettingsPanel({
+function mediaTypeLabel(t: FileMediaType): string {
+	switch (t) {
+		case "jpeg":
+			return "JPEG Image";
+		case "png":
+			return "PNG Image";
+		case "gif":
+			return "GIF Image";
+		case "webp":
+			return "WebP Image";
+		case "svg":
+			return "SVG Image";
+		case "avif":
+			return "AVIF Image";
+		case "bmp":
+			return "BMP Image";
+		case "tiff":
+			return "TIFF Image";
+		case "video":
+			return "Video";
+		case "audio":
+			return "Audio";
+		case "unknown":
+			return "File";
+	}
+}
+
+export function FileSettings({
+	fileName,
+	mediaType,
 	settings,
-	setSettings,
-	settingsOpen,
-	setSettingsOpen,
-}: SettingsPanelProps) {
+	onChange,
+}: FileSettingsProps) {
 	const set = <K extends keyof CompressionSettings>(
 		k: K,
 		v: CompressionSettings[K],
-	) => setSettings(s => ({ ...s, [k]: v }));
+	) => onChange({ ...settings, [k]: v });
+
+	const hasCompressibleSettings =
+		mediaType === "jpeg" ||
+		mediaType === "png" ||
+		mediaType === "webp" ||
+		mediaType === "video" ||
+		mediaType === "audio";
 
 	return (
 		<div>
-			<button onClick={() => setSettingsOpen(o => !o)}>
-				⚙️ Compression Settings (
-				{settings.compress ? "enabled" : "disabled"}){" "}
-				{settingsOpen ? "▲" : "▼"}
-			</button>
+			<p>
+				{fileName} <small>({mediaTypeLabel(mediaType)})</small>
+			</p>
 
-			{settingsOpen && (
+			<label>
+				<input
+					type='checkbox'
+					checked={settings.compress}
+					onChange={e => set("compress", e.target.checked)}
+				/>{" "}
+				Enable compression
+			</label>
+
+			{settings.compress && hasCompressibleSettings && (
 				<div>
-					<label>
-						<input
-							type='checkbox'
-							checked={settings.compress}
-							onChange={e => set("compress", e.target.checked)}
-						/>{" "}
-						Enable compression
-					</label>
-
-					{settings.compress && (
+					{mediaType === "jpeg" && (
 						<div>
-							<p>Images</p>
-							<div>
-								<label>
-									JPEG quality (qscale):{" "}
-									{settings.jpeg_quality}
-									<input
-										type='range'
-										min={1}
-										max={31}
-										value={settings.jpeg_quality}
-										onChange={e =>
-											set(
-												"jpeg_quality",
-												Number(e.target.value),
-											)
-										}
-									/>
-								</label>
-							</div>
-							<div>
-								<label>
-									PNG compression: {settings.png_level}
-									<input
-										type='range'
-										min={0}
-										max={9}
-										value={settings.png_level}
-										onChange={e =>
-											set(
-												"png_level",
-												Number(e.target.value),
-											)
-										}
-									/>
-								</label>
-							</div>
-							<div>
-								<label>
-									WebP quality: {settings.webp_quality}%
-									<input
-										type='range'
-										min={1}
-										max={100}
-										value={settings.webp_quality}
-										onChange={e =>
-											set(
-												"webp_quality",
-												Number(e.target.value),
-											)
-										}
-									/>
-								</label>
-							</div>
+							<label>
+								JPEG quality (qscale): {settings.jpeg_quality}
+								<input
+									type='range'
+									min={1}
+									max={31}
+									value={settings.jpeg_quality}
+									onChange={e =>
+										set(
+											"jpeg_quality",
+											Number(e.target.value),
+										)
+									}
+								/>
+							</label>
+						</div>
+					)}
 
-							<p>Video</p>
+					{mediaType === "png" && (
+						<div>
+							<label>
+								PNG compression level: {settings.png_level}
+								<input
+									type='range'
+									min={0}
+									max={9}
+									value={settings.png_level}
+									onChange={e =>
+										set("png_level", Number(e.target.value))
+									}
+								/>
+							</label>
+						</div>
+					)}
+
+					{mediaType === "webp" && (
+						<div>
+							<label>
+								WebP quality: {settings.webp_quality}%
+								<input
+									type='range'
+									min={1}
+									max={100}
+									value={settings.webp_quality}
+									onChange={e =>
+										set(
+											"webp_quality",
+											Number(e.target.value),
+										)
+									}
+								/>
+							</label>
+						</div>
+					)}
+
+					{mediaType === "video" && (
+						<>
 							<div>
 								<label>
 									CRF (quality): {settings.video_crf}
@@ -147,8 +181,11 @@ export function SettingsPanel({
 									))}
 								</select>
 							</div>
+						</>
+					)}
 
-							<p>Audio</p>
+					{mediaType === "audio" && (
+						<>
 							<div>
 								<label>Codec: </label>
 								<select
@@ -182,9 +219,19 @@ export function SettingsPanel({
 									))}
 								</select>
 							</div>
-						</div>
+						</>
 					)}
 				</div>
+			)}
+
+			{settings.compress && !hasCompressibleSettings && (
+				<p>
+					<small>
+						No configurable compression settings for{" "}
+						{mediaTypeLabel(mediaType)} files — the server will
+						apply sensible defaults.
+					</small>
+				</p>
 			)}
 		</div>
 	);

@@ -1,17 +1,13 @@
 import { useState } from "react";
 import axios from "axios";
-import type { CompressionSettings, FileProgress } from "./types";
+import type { CompressionSettings, FileEntry, FileProgress } from "./types";
 import { DEFAULT_SETTINGS } from "./lib/constants";
-import { buildQueryString } from "./lib/utils";
-import { SettingsPanel } from "./components/SettingsPanel";
+import { buildQueryString, getFileMediaType } from "./lib/utils";
 import { UploadZone } from "./components/UploadZone";
 import { ProgressList } from "./components/ProgressList";
 
 function App() {
-	const [settings, setSettings] =
-		useState<CompressionSettings>(DEFAULT_SETTINGS);
-	const [settingsOpen, setSettingsOpen] = useState(false);
-	const [fileList, setFileList] = useState<File[]>([]);
+	const [entries, setEntries] = useState<FileEntry[]>([]);
 	const [progress, setProgress] = useState<FileProgress[]>([]);
 	const [uploading, setUploading] = useState(false);
 
@@ -22,11 +18,16 @@ function App() {
 
 	const handleFiles = (files: FileList | null) => {
 		if (!files) return;
-		setFileList(Array.from(files));
+		const newEntries: FileEntry[] = Array.from(files).map(file => ({
+			file,
+			mediaType: getFileMediaType(file.type),
+			settings: { ...DEFAULT_SETTINGS },
+		}));
+		setEntries(newEntries);
 		setProgress(
-			Array.from(files).map(f => ({
-				name: f.name,
-				originalSize: f.size,
+			newEntries.map(e => ({
+				name: e.file.name,
+				originalSize: e.file.size,
 				stage: "idle",
 				sendPercent: 0,
 				compressPercent: 0,
@@ -34,13 +35,24 @@ function App() {
 		);
 	};
 
+	const updateEntrySettings = (
+		index: number,
+		settings: CompressionSettings,
+	) => {
+		setEntries(prev =>
+			prev.map((entry, i) =>
+				i === index ? { ...entry, settings } : entry,
+			),
+		);
+	};
+
 	const handleUpload = async () => {
-		if (!fileList.length) return;
+		if (!entries.length) return;
 		setUploading(true);
 
-		const uploads = fileList.map(async (file, i) => {
+		const uploads = entries.map(async (entry, i) => {
 			const jobId = crypto.randomUUID();
-			const qs = buildQueryString(settings);
+			const qs = buildQueryString(entry.settings, entry.mediaType);
 
 			updateProgress(i, { stage: "sending", sendPercent: 0 });
 
@@ -68,7 +80,7 @@ function App() {
 			sse.onerror = () => sse.close();
 
 			const formData = new FormData();
-			formData.append("file", file);
+			formData.append("file", entry.file);
 
 			try {
 				const res = await axios.post(
@@ -112,21 +124,15 @@ function App() {
 			<h1>🦀 Crabdrop</h1>
 			<p>Fast file sharing with built-in compression</p>
 
-			<SettingsPanel
-				settings={settings}
-				setSettings={setSettings}
-				settingsOpen={settingsOpen}
-				setSettingsOpen={setSettingsOpen}
-			/>
-
 			<UploadZone
-				fileList={fileList}
+				entries={entries}
+				onUpdateSettings={updateEntrySettings}
 				handleFiles={handleFiles}
 				handleUpload={handleUpload}
 				uploading={uploading}
 			/>
 
-			<ProgressList progress={progress} compress={settings.compress} />
+			<ProgressList progress={progress} entries={entries} />
 		</div>
 	);
 }

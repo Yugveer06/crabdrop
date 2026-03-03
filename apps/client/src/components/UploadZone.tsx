@@ -1,20 +1,25 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { formatBytes } from "../lib/utils";
+import type { CompressionSettings, FileEntry } from "../types";
+import { FileSettings } from "./SettingsPanel";
 
 interface UploadZoneProps {
-	fileList: File[];
+	entries: FileEntry[];
+	onUpdateSettings: (index: number, settings: CompressionSettings) => void;
 	handleFiles: (files: FileList | null) => void;
 	handleUpload: () => void;
 	uploading: boolean;
 }
 
 export function UploadZone({
-	fileList,
+	entries,
+	onUpdateSettings,
 	handleFiles,
 	handleUpload,
 	uploading,
 }: UploadZoneProps) {
 	const fileInputRef = useRef<HTMLInputElement>(null);
+	const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
 
 	return (
 		<div>
@@ -38,11 +43,34 @@ export function UploadZone({
 				/>
 			</div>
 
-			{fileList.length > 0 && (
+			{entries.length > 0 && (
 				<ul>
-					{fileList.map((f, i) => (
+					{entries.map((entry, i) => (
 						<li key={i}>
-							{f.name} — {formatBytes(f.size)}
+							<div>
+								<span>
+									{entry.file.name} —{" "}
+									{formatBytes(entry.file.size)}
+								</span>
+								<button
+									type='button'
+									onClick={() =>
+										setExpandedIndex(
+											expandedIndex === i ? null : i,
+										)
+									}
+								>
+									⚙️ {expandedIndex === i ? "▲" : "▼"}
+								</button>
+							</div>
+							{expandedIndex === i && (
+								<FileSettings
+									fileName={entry.file.name}
+									mediaType={entry.mediaType}
+									settings={entry.settings}
+									onChange={s => onUpdateSettings(i, s)}
+								/>
+							)}
 						</li>
 					))}
 				</ul>
@@ -50,11 +78,11 @@ export function UploadZone({
 
 			<button
 				onClick={handleUpload}
-				disabled={uploading || fileList.length === 0}
+				disabled={uploading || entries.length === 0}
 			>
 				{uploading
 					? "Uploading…"
-					: `Upload ${fileList.length > 0 ? `${fileList.length} file${fileList.length > 1 ? "s" : ""}` : ""}`}
+					: `Upload ${entries.length > 0 ? `${entries.length} file${entries.length > 1 ? "s" : ""}` : ""}`}
 			</button>
 		</div>
 	);
