@@ -38,8 +38,7 @@ function App() {
 		if (!fileList.length) return;
 		setUploading(true);
 
-		for (let i = 0; i < fileList.length; i++) {
-			const file = fileList[i];
+		const uploads = fileList.map(async (file, i) => {
 			const jobId = crypto.randomUUID();
 			const qs = buildQueryString(settings);
 
@@ -102,8 +101,9 @@ function App() {
 				}
 				updateProgress(i, { stage: "error", error: msg });
 			}
-		}
+		});
 
+		await Promise.all(uploads);
 		setUploading(false);
 	};
 
