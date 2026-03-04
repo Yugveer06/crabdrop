@@ -28,19 +28,31 @@ export interface CompressionSettings {
 	audio_codec: string;
 }
 
-export interface FileEntry {
+/** An item sitting in the selection buffer, waiting to be uploaded. */
+export interface SelectionEntry {
+	/** Stable unique id for this entry (used as React key + to update state). */
+	id: string;
 	file: File;
 	mediaType: FileMediaType;
 	settings: CompressionSettings;
 }
 
-export interface FileProgress {
+/** An item currently being uploaded — lives in the progress buffer. */
+export interface ProgressEntry {
+	id: string;
 	name: string;
 	originalSize: number;
-	stage: "idle" | "sending" | "compressing" | "uploading" | "done" | "error";
+	compress: boolean;
+	stage: "sending" | "compressing" | "uploading";
 	sendPercent: number;
 	compressPercent: number;
+}
+
+/** A successfully uploaded file — lives in the results list. */
+export interface ResultEntry {
+	id: string;
+	name: string;
+	originalSize: number;
 	compressedSize?: number;
-	url?: string;
-	error?: string;
+	url: string;
 }
