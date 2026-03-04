@@ -13,6 +13,9 @@ import { SelectionBuffer } from "./components/SelectionBuffer";
 import { ProgressBuffer } from "./components/ProgressBuffer";
 import { ResultsList } from "./components/ResultsList";
 
+/** Base URL for API calls. Empty in dev (Vite proxy), full VPS URL in prod. */
+const API_URL = import.meta.env.VITE_API_URL ?? "";
+
 const MAX_FILES = 8;
 /** Max simultaneous uploads. Keeps the browser responsive for large files. */
 const CONCURRENCY = 2;
@@ -102,7 +105,9 @@ function App() {
 			const jobId = crypto.randomUUID();
 			const qs = buildQueryString(entry.settings, entry.mediaType);
 
-			const sse = new EventSource(`/api/progress?job_id=${jobId}`);
+			const sse = new EventSource(
+				`${API_URL}/api/progress?job_id=${jobId}`,
+			);
 			sse.onmessage = ev => {
 				try {
 					const data = JSON.parse(ev.data) as {
@@ -130,7 +135,7 @@ function App() {
 
 			try {
 				const res = await axios.post(
-					`/api/upload?job_id=${jobId}&${qs}`,
+					`${API_URL}/api/upload?job_id=${jobId}&${qs}`,
 					formData,
 					{
 						onUploadProgress: evt => {
@@ -144,7 +149,7 @@ function App() {
 
 				const data = res.data;
 				const r2Filename = data.url.split("/").pop();
-				const localUrl = `${window.location.origin}/f/${r2Filename}`;
+				const localUrl = `${API_URL}/f/${r2Filename}`;
 
 				// SUCCESS → remove from progress, add to results
 				setUploading(prev => prev.filter(e => e.id !== entry.id));
