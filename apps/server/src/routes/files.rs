@@ -1,5 +1,6 @@
+use axum::body::Body;
 use axum::extract::{Path, State};
-use axum::http::header;
+use axum::http::{header, HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 
@@ -10,6 +11,7 @@ use crate::state::SharedState;
 pub async fn get_file(
     State(state): State<SharedState>,
     Path(slug_with_ext): Path<String>,
+    request_headers: HeaderMap,
 ) -> Result<Response, AppError> {
     let slug = slug_with_ext
         .split('.')
@@ -29,18 +31,54 @@ pub async fn get_file(
         }
     }
 
-    let bytes = state
+    // Fetch the object stream + metadata from R2
+    let obj = state
         .storage
         .get(&file.r2_key)
         .await
         .map_err(|e| AppError::Internal(e))?;
 
-    Ok((
-        [
-            (header::CONTENT_TYPE, file.content_type.as_str()),
-            (header::CACHE_CONTROL, "public, max-age=31536000, immutable"),
-        ],
-        bytes,
-    )
-        .into_response())
+    // --- Conditional request support (ETag / If-None-Match) ---
+    if let Some(etag) = &obj.etag {
+        if let Some(if_none_match) = request_headers
+            .get(header::IF_NONE_MATCH)
+            .and_then(|v| v.to_str().ok())
+        {
+            if if_none_match == etag.as_str() {
+                return Ok(StatusCode::NOT_MODIFIED.into_response());
+            }
+        }
+    }
+
+    // Build the response headers
+    let content_type = obj
+        .content_type
+        .unwrap_or_else(|| file.content_type.clone());
+
+    let mut headers = HeaderMap::new();
+    headers.insert(header::CONTENT_TYPE, content_type.parse().unwrap());
+    headers.insert(
+        header::CACHE_CONTROL,
+        "public, max-age=31536000, immutable".parse().unwrap(),
+    );
+
+    if let Some(len) = obj.content_length {
+        headers.insert(header::CONTENT_LENGTH, len.into());
+    }
+    if let Some(etag) = &obj.etag {
+        if let Ok(val) = etag.parse() {
+            headers.insert(header::ETAG, val);
+        }
+    }
+    if let Some(last_mod) = &obj.last_modified {
+        if let Ok(val) = last_mod.parse() {
+            headers.insert(header::LAST_MODIFIED, val);
+        }
+    }
+
+    // Stream the R2 body directly to the client without buffering
+    let stream = obj.body.into_inner();
+    let body = Body::from_stream(stream);
+
+    Ok((headers, body).into_response())
 }

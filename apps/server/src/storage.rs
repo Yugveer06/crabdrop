@@ -4,6 +4,15 @@ use aws_sdk_s3::primitives::ByteStream;
 use aws_sdk_s3::Client;
 use tracing::{debug, error, info};
 
+/// Result from an R2 GetObject call, carrying the stream and metadata.
+pub struct GetObjectResult {
+    pub body: ByteStream,
+    pub content_length: Option<i64>,
+    pub content_type: Option<String>,
+    pub etag: Option<String>,
+    pub last_modified: Option<String>,
+}
+
 pub struct Storage {
     client: Client,
     bucket: String,
@@ -79,7 +88,9 @@ impl Storage {
         Ok(())
     }
 
-    pub async fn get(&self, key: &str) -> Result<Vec<u8>, String> {
+    /// Fetch an object from R2 and return its byte-stream + metadata.
+    /// The body is NOT buffered — it streams directly from R2.
+    pub async fn get(&self, key: &str) -> Result<GetObjectResult, String> {
         let resp = self
             .client
             .get_object()
@@ -89,14 +100,12 @@ impl Storage {
             .await
             .map_err(|e| format!("R2 get failed: {}", e))?;
 
-        let bytes = resp
-            .body
-            .collect()
-            .await
-            .map_err(|e| format!("Failed to read R2 response: {}", e))?
-            .into_bytes()
-            .to_vec();
-
-        Ok(bytes)
+        Ok(GetObjectResult {
+            body: resp.body,
+            content_length: resp.content_length,
+            content_type: resp.content_type,
+            etag: resp.e_tag,
+            last_modified: resp.last_modified.map(|t| t.to_string()),
+        })
     }
 }
