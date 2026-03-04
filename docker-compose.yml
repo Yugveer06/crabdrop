@@ -8,8 +8,8 @@ services:
         env_file:
             - .env
         ports:
-            # Bind to 127.0.0.1 so NGINX can access it, but it's hidden from the public internet
-            - "127.0.0.1:3001:3001"
+            # Reverted to default binding (0.0.0.0) to match working bots configuration
+            - "3001:3001"
         restart: unless-stopped
         networks:
             - crabnet
