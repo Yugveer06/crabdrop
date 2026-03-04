@@ -437,7 +437,7 @@ fn compress_video(
     let in_time_base = ictx.stream(video_stream_idx).unwrap().time_base();
     vid_enc.set_width(video_decoder.width());
     vid_enc.set_height(video_decoder.height());
-    vid_enc.set_format(video_decoder.format());
+    vid_enc.set_format(format::Pixel::YUV420P);
     vid_enc.set_time_base(in_time_base);
     vid_enc.set_frame_rate(Some(ictx.stream(video_stream_idx).unwrap().avg_frame_rate()));
 
@@ -445,15 +445,16 @@ fn compress_video(
     vid_enc_opts.set("crf", &crf.to_string());
     vid_enc_opts.set("preset", preset);
 
+    let mut video_encoder = vid_enc
+        .open_with(vid_enc_opts)
+        .map_err(|e| format!("open vid encoder: {e}"))?;
+
     let mut out_video_stream = octx
         .add_stream(video_enc_codec)
         .map_err(|e| format!("add video stream: {e}"))?;
     out_video_stream.set_time_base(in_time_base);
+    out_video_stream.set_parameters(&video_encoder);
     let out_video_idx = out_video_stream.index();
-
-    let mut video_encoder = vid_enc
-        .open_with(vid_enc_opts)
-        .map_err(|e| format!("open vid encoder: {e}"))?;
 
     // Set up audio encoder if we have audio
     let (mut audio_encoder_opt, out_audio_idx_opt) = if let Some(mut aud_dec) = audio_decoder_opt {
@@ -492,6 +493,8 @@ fn compress_video(
             .open_as(aud_enc_codec)
             .map_err(|e| format!("open aud encoder: {e}"))?;
 
+        out_audio_stream.set_parameters(&audio_encoder);
+
         (Some((audio_encoder, aud_dec)), Some(out_audio_idx))
     } else {
         (None, None)
@@ -500,6 +503,9 @@ fn compress_video(
     octx.write_header().map_err(|e| format!("write header: {e}"))?;
 
     send_progress("compressing", 20);
+
+    // Lazy video scaler — initialized on first decoded frame
+    let mut video_scaler: Option<ffmpeg::software::scaling::Context> = None;
 
     // Process packets
     let packets: Vec<_> = ictx.packets().collect();
@@ -518,9 +524,31 @@ fn compress_video(
                 .map_err(|e| format!("vid send pkt: {e}"))?;
 
             while video_decoder.receive_frame(&mut decoded).is_ok() {
+                // Convert pixel format if needed
+                let frame_to_encode = if decoded.format() != format::Pixel::YUV420P {
+                    let scaler = video_scaler.get_or_insert_with(|| {
+                        ffmpeg::software::scaling::Context::get(
+                            decoded.format(),
+                            decoded.width(),
+                            decoded.height(),
+                            format::Pixel::YUV420P,
+                            decoded.width(),
+                            decoded.height(),
+                            ffmpeg::software::scaling::Flags::BILINEAR,
+                        )
+                        .expect("video scaler init")
+                    });
+                    let mut converted = frame::Video::empty();
+                    scaler.run(&decoded, &mut converted).map_err(|e| format!("vid scale: {e}"))?;
+                    converted.set_pts(decoded.pts());
+                    converted
+                } else {
+                    decoded.clone()
+                };
+
                 let mut encoded = Packet::empty();
                 video_encoder
-                    .send_frame(&decoded)
+                    .send_frame(&frame_to_encode)
                     .map_err(|e| format!("vid send frame: {e}"))?;
 
                 while video_encoder.receive_packet(&mut encoded).is_ok() {
@@ -563,8 +591,20 @@ fn compress_video(
     {
         let mut decoded = frame::Video::empty();
         while video_decoder.receive_frame(&mut decoded).is_ok() {
+            let frame_to_encode = if decoded.format() != format::Pixel::YUV420P {
+                if let Some(ref mut scaler) = video_scaler {
+                    let mut converted = frame::Video::empty();
+                    scaler.run(&decoded, &mut converted).ok();
+                    converted.set_pts(decoded.pts());
+                    converted
+                } else {
+                    decoded.clone()
+                }
+            } else {
+                decoded.clone()
+            };
             let mut encoded = Packet::empty();
-            video_encoder.send_frame(&decoded).ok();
+            video_encoder.send_frame(&frame_to_encode).ok();
             while video_encoder.receive_packet(&mut encoded).is_ok() {
                 encoded.set_stream(out_video_idx);
                 encoded.write_interleaved(&mut octx).ok();
