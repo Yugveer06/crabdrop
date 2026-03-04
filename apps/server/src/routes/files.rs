@@ -76,9 +76,17 @@ pub async fn get_file(
         }
     }
 
-    // Stream the R2 body directly to the client without buffering
-    let stream = obj.body.into_inner();
-    let body = Body::from_stream(stream);
+    // Collect the R2 ByteStream into bytes.
+    // ByteStream does not implement tokio_stream::Stream (required by Body::from_stream),
+    // so we aggregate the bytes and build the body from them.
+    let data = obj
+        .body
+        .collect()
+        .await
+        .map_err(|e| AppError::Internal(format!("Failed to read R2 body: {}", e)))?
+        .into_bytes();
+
+    let body = Body::from(data);
 
     Ok((headers, body).into_response())
 }
