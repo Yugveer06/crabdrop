@@ -1,7 +1,9 @@
-# ─── Stage 1: Build ───────────────────────────────────────────────────────────
-FROM rust:bookworm AS builder
+# ─── Stage 1: Chef ─────────────────────────────────────────────────────────────
+# cargo-chef computes a "recipe" of dependencies, enabling proper Docker layer
+# caching so that deps are only rebuilt when Cargo.toml/Cargo.lock change.
+FROM rust:bookworm AS chef
 
-# Install ffmpeg development libraries (required to compile ffmpeg-next)
+RUN cargo install cargo-chef --locked
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libavcodec-dev \
     libavformat-dev \
@@ -16,20 +18,27 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# Cache dependencies by copying manifests first
-COPY Cargo.toml Cargo.lock ./
-RUN mkdir src && echo 'fn main() {}' > src/main.rs
-RUN cargo build --release 2>/dev/null || true
-RUN rm -rf src
-
-# Build the real application
+# ─── Stage 2: Planner ─────────────────────────────────────────────────────────
+# Generates the dependency recipe from your source tree
+FROM chef AS planner
 COPY . .
-RUN touch src/main.rs && cargo build --release
+RUN cargo chef prepare --recipe-path recipe.json
 
-# ─── Stage 2: Runtime ─────────────────────────────────────────────────────────
+# ─── Stage 3: Builder ─────────────────────────────────────────────────────────
+# Builds dependencies first (cached layer), then the actual app
+FROM chef AS builder
+
+# Build deps only — this layer is cached as long as recipe.json doesn't change
+COPY --from=planner /app/recipe.json recipe.json
+RUN cargo chef cook --release --recipe-path recipe.json
+
+# Now build the actual application
+COPY . .
+RUN cargo build --release
+
+# ─── Stage 4: Runtime ─────────────────────────────────────────────────────────
 FROM debian:bookworm-slim AS runtime
 
-# Install ffmpeg shared libraries
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     ca-certificates \

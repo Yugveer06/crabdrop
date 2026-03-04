@@ -1,8 +1,10 @@
 services:
     server:
-        build:
-            context: ./apps/server
-            dockerfile: Dockerfile
+        image: ghcr.io/yugveer06/crabdrop/server:latest
+        # To build locally instead, comment out 'image' above and uncomment:
+        # build:
+        #     context: ./apps/server
+        #     dockerfile: Dockerfile
         env_file:
             - .env
         ports:
