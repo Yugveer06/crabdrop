@@ -70,8 +70,7 @@ jobs:
                       git fetch origin master
                       git reset --hard origin/master
 
-                      # Write .env from GitHub secret
-                      echo '${{ secrets.ENV_FILE }}' > .env
+                      # The .env file is managed manually on the VPS, skipping generation
 
                       # Log in to GHCR on the VPS (requires a PAT with read:packages scope)
                       # Create one at: https://github.com/settings/tokens → "read:packages"
