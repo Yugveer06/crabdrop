@@ -12,6 +12,7 @@ import { Spotlight } from "./components/ui/spotlight-new";
 import { SelectionBuffer } from "./components/SelectionBuffer";
 import { ProgressBuffer } from "./components/ProgressBuffer";
 import { ResultsList } from "./components/ResultsList";
+import { ModeToggle } from "./components/mode-toggle";
 
 /** Base URL for API calls. Empty in dev (Vite proxy), full VPS URL in prod. */
 const API_URL = import.meta.env.VITE_API_URL ?? "";
@@ -179,6 +180,10 @@ function App() {
 	return (
 		<div className='relative min-h-screen bg-background overflow-hidden'>
 			<Spotlight />
+
+			<div className='absolute top-4 right-4 z-50'>
+				<ModeToggle />
+			</div>
 
 			<div className='relative z-10 flex flex-col items-center justify-center min-h-screen px-4 py-12'>
 				<div className='w-full max-w-lg space-y-5'>
