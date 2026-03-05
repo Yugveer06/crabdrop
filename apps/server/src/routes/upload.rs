@@ -76,6 +76,7 @@ pub struct UploadQuery {
     /// Optional SSE job ID.
     pub job_id: Option<String>,
 
+    pub expires_in: Option<String>,
     pub compress: Option<bool>,
     pub jpeg_quality: Option<u8>,
     pub png_level: Option<u8>,
@@ -301,7 +302,18 @@ pub async fn upload(
     let now = Utc::now().fixed_offset();
     let id = Uuid::new_v4();
 
-    debug!(id = %id, "Saving record to database");
+    let expires_at = match query.expires_in.as_deref() {
+        Some("1d") => Some(now + chrono::Duration::days(1)),
+        Some("1w") => Some(now + chrono::Duration::days(7)),
+        Some("1m") => Some(now + chrono::Duration::days(30)),
+        Some("3m") => Some(now + chrono::Duration::days(90)),
+        Some("1y") => Some(now + chrono::Duration::days(365)),
+        Some("permanent") => None,
+        // Default to 1 week if not specified or invalid
+        _ => Some(now + chrono::Duration::days(7)),
+    };
+
+    debug!(id = %id, exp = ?expires_at, "Saving record to database");
 
     let record = images::ActiveModel {
         id: Set(id),
@@ -311,7 +323,7 @@ pub async fn upload(
         size_bytes: Set(compressed_size),
         r2_key: Set(r2_key),
         hash: Set(hash),
-        expires_at: Set(None),
+        expires_at: Set(expires_at),
         created_at: Set(now),
         updated_at: Set(now),
     };

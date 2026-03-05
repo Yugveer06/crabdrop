@@ -15,6 +15,7 @@ export type FileMediaType =
 /** Per-file compression settings. Only the fields relevant to the file type need to be set. */
 export interface CompressionSettings {
 	compress: boolean;
+	expires_in: string;
 	// Image
 	jpeg_quality: number;
 	png_level: number;

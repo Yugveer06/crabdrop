@@ -57,9 +57,15 @@ export function buildQueryString(
 	settings: CompressionSettings,
 	mediaType: FileMediaType,
 ): string {
-	if (!settings.compress) return "compress=false";
+	const p = new URLSearchParams();
+	if (settings.expires_in) p.set("expires_in", settings.expires_in);
 
-	const p = new URLSearchParams({ compress: "true" });
+	if (!settings.compress) {
+		p.set("compress", "false");
+		return p.toString();
+	}
+
+	p.set("compress", "true");
 
 	switch (mediaType) {
 		case "jpeg":

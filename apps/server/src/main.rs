@@ -11,6 +11,7 @@ use tracing_subscriber::{EnvFilter, fmt};
 
 mod compression;
 mod config;
+mod cron;
 mod entities;
 mod error;
 mod routes;
@@ -68,12 +69,18 @@ async fn main() {
         .layer(DefaultBodyLimit::max(config.max_upload_bytes))
         .layer(CorsLayer::permissive())
         .layer(TraceLayer::new_for_http())
-        .with_state(state);
+        .with_state(state.clone());
+
+    // Spawn the background cleanup cron job
+    let cleanup_state = state.clone();
+    tokio::spawn(async move {
+        cron::run_cleanup_job(cleanup_state).await;
+    });
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3001")
         .await
         .unwrap();
 
-    info!("Crabdrop backend listening on http://localhost:3001");
+    info!("Crabdrop backend listening on http://0.0.0.0:3001");
     axum::serve(listener, app).await.unwrap();
 }

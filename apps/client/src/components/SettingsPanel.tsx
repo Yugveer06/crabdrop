@@ -4,6 +4,7 @@ import {
 	VIDEO_CODECS,
 	AUDIO_CODECS,
 	AUDIO_BITRATES,
+	EXPIRY_OPTIONS,
 } from "../lib/constants";
 import { Checkbox } from "./ui/checkbox";
 import { Label } from "./ui/label";
@@ -90,6 +91,32 @@ export function FileSettings({
 						Compress
 					</Label>
 				</div>
+			</div>
+
+			{/* Expiration setting (Always visible) */}
+			<div className='flex items-center justify-between'>
+				<Label className='text-xs text-muted-foreground'>
+					Auto-Delete
+				</Label>
+				<Select
+					value={settings.expires_in}
+					onValueChange={v => set("expires_in", v)}
+				>
+					<SelectTrigger className='w-32 h-8 text-xs'>
+						<SelectValue />
+					</SelectTrigger>
+					<SelectContent>
+						{EXPIRY_OPTIONS.map(opt => (
+							<SelectItem
+								key={opt.value}
+								value={opt.value}
+								className='text-xs'
+							>
+								{opt.label}
+							</SelectItem>
+						))}
+					</SelectContent>
+				</Select>
 			</div>
 
 			{settings.compress && hasCompressibleSettings && (
