@@ -1,12 +1,20 @@
 use axum::body::Body;
 use axum::extract::{Path, State};
-use axum::http::{header, HeaderMap, StatusCode};
+use axum::http::{header, HeaderMap, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 
 use crate::entities::images;
 use crate::error::AppError;
 use crate::state::SharedState;
+
+fn is_browser_previewable(content_type: &str) -> bool {
+    content_type.starts_with("image/")
+        || content_type.starts_with("video/")
+        || content_type.starts_with("audio/")
+        || content_type == "application/pdf"
+        || content_type == "text/html"
+}
 
 pub async fn get_file(
     State(state): State<SharedState>,
@@ -74,6 +82,15 @@ pub async fn get_file(
         if let Ok(val) = last_mod.parse() {
             headers.insert(header::LAST_MODIFIED, val);
         }
+    }
+
+    if !is_browser_previewable(&content_type) {
+        let filename = file.original_filename.clone();
+        let disposition = HeaderValue::from_str(&format!(
+            "attachment; filename=\"{}\"",
+            filename.replace('\\', "\\\\").replace('"', "\\\"")
+        )).unwrap_or_else(|_| HeaderValue::from_static("attachment"));
+        headers.insert(header::CONTENT_DISPOSITION, disposition);
     }
 
     // Collect the R2 ByteStream into bytes.

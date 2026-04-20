@@ -13,7 +13,7 @@ pub struct Config {
 impl Config {
     pub fn from_env() -> Self {
         let max_upload_mb: usize = env::var("MAX_UPLOAD_MB")
-            .unwrap_or_else(|_| "50".to_string())
+            .unwrap_or_else(|_| "100".to_string())
             .parse()
             .expect("MAX_UPLOAD_MB must be a number");
 

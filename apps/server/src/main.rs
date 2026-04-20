@@ -71,7 +71,7 @@ async fn main() {
         )
         .route("/api/progress", get(routes::progress::progress))
         .route("/f/{slug_with_ext}", get(routes::files::get_file))
-        .layer(DefaultBodyLimit::max(config.max_upload_bytes))
+        .layer(DefaultBodyLimit::max(config.max_upload_bytes + 10 * 1024 * 1024))
         .layer(CorsLayer::permissive())
         .layer(TraceLayer::new_for_http())
         .with_state(state.clone());

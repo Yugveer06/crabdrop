@@ -32,10 +32,38 @@ const ALLOWED_CONTENT_TYPES: &[&str] = &[
     "audio/wav",
     "audio/webm",
     "audio/flac",
+    // Documents
+    "application/pdf",
+    "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.ms-excel",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/vnd.ms-powerpoint",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    "application/zip",
+    "application/x-rar-compressed",
+    "application/x-7z-compressed",
+    "application/x-tar",
+    "application/gzip",
+    // Executables
+    "application/x-msdownload",
+    "application/x-executable",
+    "application/x-sh",
+    // Text
+    "text/plain",
+    "text/csv",
+    "text/html",
+    "text/css",
+    "text/javascript",
+    "application/json",
+    "application/xml",
+    // Other
+    "application/octet-stream",
 ];
 
 fn extension_from_content_type(ct: &str) -> &str {
     match ct {
+        // Images
         "image/jpeg" => "jpg",
         "image/png" => "png",
         "image/gif" => "gif",
@@ -44,15 +72,43 @@ fn extension_from_content_type(ct: &str) -> &str {
         "image/avif" => "avif",
         "image/bmp" => "bmp",
         "image/tiff" => "tiff",
+        // Video
         "video/mp4" => "mp4",
         "video/webm" => "webm",
         "video/quicktime" => "mov",
+        // Audio
         "audio/mpeg" => "mp3",
         "audio/ogg" => "ogg",
         "audio/wav" => "wav",
         "audio/webm" => "weba",
         "audio/flac" => "flac",
         "audio/aac" => "aac",
+        // Documents
+        "application/pdf" => "pdf",
+        "application/msword" => "doc",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document" => "docx",
+        "application/vnd.ms-excel" => "xls",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" => "xlsx",
+        "application/vnd.ms-powerpoint" => "ppt",
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation" => "pptx",
+        "application/zip" => "zip",
+        "application/x-rar-compressed" => "rar",
+        "application/x-7z-compressed" => "7z",
+        "application/x-tar" => "tar",
+        "application/gzip" => "gz",
+        // Executables
+        "application/x-msdownload" => "exe",
+        "application/x-executable" => "exe",
+        "application/x-sh" => "sh",
+        // Text
+        "text/plain" => "txt",
+        "text/csv" => "csv",
+        "text/html" => "html",
+        "text/css" => "css",
+        "text/javascript" => "js",
+        "application/json" => "json",
+        "application/xml" => "xml",
+        // Default
         _ => "bin",
     }
 }
@@ -136,7 +192,7 @@ pub async fn upload(
     if !ALLOWED_CONTENT_TYPES.contains(&content_type.as_str()) {
         warn!(content_type = %content_type, "Rejected file with unsupported content type");
         return Err(AppError::BadRequest(format!(
-            "File type '{}' is not allowed. Allowed types: images, video, and audio.",
+            "File type '{}' is not allowed.",
             content_type
         )));
     }
