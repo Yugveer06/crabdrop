@@ -1,12 +1,12 @@
-use axum::extract::DefaultBodyLimit;
-use axum::routing::{get, post};
 use axum::Router;
+use axum::extract::DefaultBodyLimit;
+use axum::routing::{delete, get, post};
 use dashmap::DashMap;
 use sea_orm::Database;
 use std::sync::Arc;
 use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
-use tracing::{info, error};
+use tracing::{error, info};
 use tracing_subscriber::{EnvFilter, fmt};
 
 mod compression;
@@ -14,6 +14,7 @@ mod config;
 mod cron;
 mod entities;
 mod error;
+mod image_deletion;
 mod routes;
 mod state;
 mod storage;
@@ -64,6 +65,10 @@ async fn main() {
     let app = Router::new()
         .route("/api/health", get(routes::health::health))
         .route("/api/upload", post(routes::upload::upload))
+        .route(
+            "/api/images/{delete_hash}",
+            delete(routes::delete::delete_image),
+        )
         .route("/api/progress", get(routes::progress::progress))
         .route("/f/{slug_with_ext}", get(routes::files::get_file))
         .layer(DefaultBodyLimit::max(config.max_upload_bytes))
@@ -77,9 +82,7 @@ async fn main() {
         cron::run_cleanup_job(cleanup_state).await;
     });
 
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:3001")
-        .await
-        .unwrap();
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:3001").await.unwrap();
 
     info!("Crabdrop backend listening on http://0.0.0.0:3001");
     axum::serve(listener, app).await.unwrap();

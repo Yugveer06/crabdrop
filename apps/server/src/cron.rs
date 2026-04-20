@@ -23,21 +23,12 @@ pub async fn run_cleanup_job(state: SharedState) {
                 }
 
                 for file in expired_files {
-                    // Try to delete from R2 first
-                    match state.storage.delete(&file.r2_key).await {
+                    match crate::image_deletion::delete_image(&state, file).await {
                         Ok(_) => {
-                            // If deleted from R2 successfully, delete from DB
-                            if let Err(e) = crate::entities::images::Entity::delete_by_id(file.id)
-                                .exec(&state.db)
-                                .await
-                            {
-                                error!("Failed to delete expired file {} from DB: {}", file.slug, e);
-                            } else {
-                                info!("Successfully deleted expired file: {} ({} bytes)", file.original_filename, file.size_bytes);
-                            }
+                            info!("Successfully deleted expired file");
                         }
                         Err(e) => {
-                            error!("Failed to delete expired file {} from R2: {}", file.slug, e);
+                            error!("Failed to delete expired file: {}", e);
                         }
                     }
                 }

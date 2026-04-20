@@ -56,4 +56,5 @@ export interface ResultEntry {
 	originalSize: number;
 	compressedSize?: number;
 	url: string;
+	deleteHash?: string;
 }

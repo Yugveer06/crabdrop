@@ -92,6 +92,20 @@ export function ResultsList({ results }: ResultsListProps) {
 								</Button>
 								<CopyButton text={r.url} />
 							</div>
+
+							{r.deleteHash && (
+								<div className='flex items-center gap-1'>
+									<div className='flex-1 rounded-md border border-border bg-muted/40 px-2.5 py-1.5 text-xs text-muted-foreground'>
+										<span className='mr-2 font-medium text-foreground'>
+											Delete hash:
+										</span>
+										<span className='font-mono break-all'>
+											{r.deleteHash}
+										</span>
+									</div>
+									<CopyButton text={r.deleteHash} />
+								</div>
+							)}
 						</div>
 					</div>
 				))}

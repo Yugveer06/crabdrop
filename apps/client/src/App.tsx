@@ -161,6 +161,7 @@ function App() {
 						originalSize: entry.file.size,
 						compressedSize: data.compressed_size_bytes,
 						url: localUrl,
+						deleteHash: data.delete_hash,
 					},
 					...prev,
 				]);

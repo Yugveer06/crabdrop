@@ -61,6 +61,7 @@ fn extension_from_content_type(ct: &str) -> &str {
 pub struct UploadResponse {
     pub id: Uuid,
     pub slug: String,
+    pub delete_hash: String,
     pub url: String,
     pub original_filename: String,
     pub content_type: String,
@@ -243,6 +244,7 @@ pub async fn upload(
         return Ok(Json(UploadResponse {
             id: existing.id,
             slug: existing.slug.clone(),
+            delete_hash: existing.delete_hash,
             url: format!("{}/{}", state.r2_public_url, existing.r2_key),
             original_filename: existing.original_filename,
             content_type: existing.content_type,
@@ -267,6 +269,7 @@ pub async fn upload(
     // Upload compressed bytes to R2
     // ------------------------------------------------------------------
     let slug = nanoid::nanoid!(8);
+    let delete_hash = nanoid::nanoid!(32);
     let extension = extension_from_content_type(&effective_content_type);
     let r2_key = format!("{}.{}", slug, extension);
 
@@ -318,6 +321,7 @@ pub async fn upload(
     let record = images::ActiveModel {
         id: Set(id),
         slug: Set(slug.clone()),
+        delete_hash: Set(delete_hash.clone()),
         original_filename: Set(original_filename.clone()),
         content_type: Set(effective_content_type.clone()),
         size_bytes: Set(compressed_size),
@@ -347,6 +351,7 @@ pub async fn upload(
     Ok(Json(UploadResponse {
         id,
         slug,
+        delete_hash,
         url,
         original_filename,
         content_type: effective_content_type,

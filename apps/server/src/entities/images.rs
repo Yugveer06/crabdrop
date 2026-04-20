@@ -9,6 +9,8 @@ pub struct Model {
     pub id: Uuid,
     #[sea_orm(unique)]
     pub slug: String,
+    #[sea_orm(unique)]
+    pub delete_hash: String,
     pub original_filename: String,
     pub content_type: String,
     pub size_bytes: i64,
