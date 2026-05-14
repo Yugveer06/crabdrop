@@ -381,7 +381,7 @@ pub async fn upload(
         original_filename: Set(original_filename.clone()),
         content_type: Set(effective_content_type.clone()),
         size_bytes: Set(compressed_size),
-        r2_key: Set(r2_key),
+        r2_key: Set(r2_key.clone()),
         hash: Set(hash),
         expires_at: Set(expires_at),
         created_at: Set(now),
