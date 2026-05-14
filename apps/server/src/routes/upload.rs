@@ -392,6 +392,26 @@ pub async fn upload(
         .insert(&state.db)
         .await
         .map_err(|e| {
+            // Attempt to clean up the orphaned R2 file
+            let cleanup_state = state.clone();
+            let key_to_delete = r2_key.clone();
+            tokio::spawn(async move {
+                match tokio::time::timeout(
+                    std::time::Duration::from_secs(10),
+                    cleanup_state.storage.delete(&key_to_delete)
+                ).await {
+                    Ok(Err(cleanup_err)) => {
+                        error!(r2_key = %key_to_delete, "Failed to clean up orphaned R2 file after DB insert error: {}", cleanup_err);
+                    }
+                    Err(_) => {
+                        error!(r2_key = %key_to_delete, "Timeout while cleaning up orphaned R2 file after DB insert error");
+                    }
+                    Ok(Ok(_)) => {
+                        info!(r2_key = %key_to_delete, "Cleaned up orphaned R2 file after DB insert error");
+                    }
+                }
+            });
+
             error!("Failed to save record to database: {}", e);
             AppError::Internal(format!("Failed to save record: {}", e))
         })?;
