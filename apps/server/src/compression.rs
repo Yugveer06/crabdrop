@@ -24,8 +24,6 @@ pub struct CompressionParams {
     // ---------- Image ----------
     /// JPEG quality: ffmpeg qscale:v 1 (best) – 31 (worst), default 5
     pub jpeg_quality: Option<u8>,
-    /// PNG compression level 0–9, default 6
-    pub png_level: Option<u8>,
     /// WebP quality 1.0–100.0, default 80.0
     pub webp_quality: Option<f32>,
 

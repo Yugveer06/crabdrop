@@ -136,7 +136,6 @@ pub struct UploadQuery {
     pub expires_in: Option<String>,
     pub compress: Option<bool>,
     pub jpeg_quality: Option<u8>,
-    pub png_level: Option<u8>,
     pub webp_quality: Option<f32>,
     pub video_crf: Option<u8>,
     pub video_codec: Option<String>,
@@ -153,7 +152,6 @@ pub async fn upload(
     let compression = CompressionParams {
         compress: query.compress,
         jpeg_quality: query.jpeg_quality,
-        png_level: query.png_level,
         webp_quality: query.webp_quality,
         video_crf: query.video_crf,
         video_codec: query.video_codec.clone(),
