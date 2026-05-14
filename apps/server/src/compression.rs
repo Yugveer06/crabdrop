@@ -1,6 +1,6 @@
 use ffmpeg_next as ffmpeg;
 use ffmpeg_next::{
-    codec, decoder, encoder, format, frame, media, Dictionary, Packet, Rational,
+    codec, encoder, format, frame, media, Dictionary, Packet, Rational,
 };
 use serde::Deserialize;
 use std::io::Read;
@@ -215,7 +215,7 @@ fn compress_image(
 
     let stream_idx = input_stream.index();
 
-    let mut dec_ctx = codec::Context::from_parameters(input_stream.parameters())
+    let dec_ctx = codec::Context::from_parameters(input_stream.parameters())
         .map_err(|e| format!("dec context: {e}"))?;
     let mut decoder = dec_ctx
         .decoder()
@@ -302,7 +302,7 @@ fn compress_image(
     let enc = encoder::find_by_name(encoder_name)
         .ok_or_else(|| format!("encoder '{}' not found", encoder_name))?;
 
-    let mut enc_ctx = codec::Context::new_with_codec(enc);
+    let enc_ctx = codec::Context::new_with_codec(enc);
     let mut video_enc = enc_ctx
         .encoder()
         .video()
@@ -396,7 +396,7 @@ fn compress_video(
 
     // Set up decoder for video
     let video_params = ictx.stream(video_stream_idx).unwrap().parameters();
-    let mut vid_dec_ctx =
+    let vid_dec_ctx =
         codec::Context::from_parameters(video_params).map_err(|e| format!("vid dec ctx: {e}"))?;
     let mut video_decoder = vid_dec_ctx
         .decoder()
@@ -406,7 +406,7 @@ fn compress_video(
     // Set up decoder for audio if present
     let audio_decoder_opt = if let Some(aidx) = audio_stream_idx {
         let audio_params = ictx.stream(aidx).unwrap().parameters();
-        let mut aud_dec_ctx = codec::Context::from_parameters(audio_params)
+        let aud_dec_ctx = codec::Context::from_parameters(audio_params)
             .map_err(|e| format!("aud dec ctx: {e}"))?;
         Some(
             aud_dec_ctx
@@ -428,7 +428,7 @@ fn compress_video(
     let video_enc_codec = encoder::find_by_name(codec_name)
         .ok_or_else(|| format!("video encoder '{}' not found", codec_name))?;
 
-    let mut vid_enc_ctx = codec::Context::new_with_codec(video_enc_codec);
+    let vid_enc_ctx = codec::Context::new_with_codec(video_enc_codec);
     let mut vid_enc = vid_enc_ctx
         .encoder()
         .video()
@@ -457,12 +457,12 @@ fn compress_video(
     let out_video_idx = out_video_stream.index();
 
     // Set up audio encoder if we have audio
-    let (mut audio_encoder_opt, out_audio_idx_opt) = if let Some(mut aud_dec) = audio_decoder_opt {
+    let (mut audio_encoder_opt, out_audio_idx_opt) = if let Some(aud_dec) = audio_decoder_opt {
         let audio_codec_name = params.audio_codec.as_deref().unwrap_or("aac");
         let aud_enc_codec = encoder::find_by_name(audio_codec_name)
             .ok_or_else(|| format!("audio encoder '{}' not found", audio_codec_name))?;
 
-        let mut aud_enc_ctx = codec::Context::new_with_codec(aud_enc_codec);
+        let aud_enc_ctx = codec::Context::new_with_codec(aud_enc_codec);
         let mut aud_enc = aud_enc_ctx
             .encoder()
             .audio()
@@ -693,7 +693,7 @@ fn compress_audio(
         .ok_or("no audio stream")?;
     let aidx = audio_stream.index();
 
-    let mut dec_ctx = codec::Context::from_parameters(audio_stream.parameters())
+    let dec_ctx = codec::Context::from_parameters(audio_stream.parameters())
         .map_err(|e| format!("dec ctx: {e}"))?;
     let mut decoder = dec_ctx
         .decoder()
@@ -705,7 +705,7 @@ fn compress_audio(
     let aud_enc_codec = encoder::find_by_name(codec_name)
         .ok_or_else(|| format!("audio encoder '{}' not found", codec_name))?;
 
-    let mut enc_ctx = codec::Context::new_with_codec(aud_enc_codec);
+    let enc_ctx = codec::Context::new_with_codec(aud_enc_codec);
     let mut aud_enc = enc_ctx
         .encoder()
         .audio()
