@@ -6,7 +6,7 @@ use serde::Deserialize;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_stream::StreamExt;
-use tracing::{debug, info};
+use tracing::info;
 
 use crate::compression::ProgressEvent;
 use crate::error::AppError;

@@ -6,7 +6,7 @@ use sea_orm::Database;
 use std::sync::Arc;
 use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
-use tracing::{error, info};
+use tracing::info;
 use tracing_subscriber::{EnvFilter, fmt};
 
 mod compression;
